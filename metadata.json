@@ -1,0 +1,7 @@
+{
+  "name": "KitchenWiz",
+  "description": "A smart kitchen assistant that manages inventory, plans meals, and reduces waste using Gemini AI.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
