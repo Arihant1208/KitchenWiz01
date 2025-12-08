@@ -7,6 +7,14 @@ export interface Ingredient {
   caloriesPerUnit?: number;
 }
 
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  quantity: string;
+  category: 'produce' | 'dairy' | 'meat' | 'pantry' | 'frozen' | 'other';
+  checked: boolean;
+}
+
 export interface UserProfile {
   name: string;
   dietaryRestrictions: string[];

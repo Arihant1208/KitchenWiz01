@@ -6,7 +6,7 @@ import { Recipes } from './components/Recipes';
 import { Assistant } from './components/Assistant';
 import { Profile } from './components/Profile';
 import { Planner } from './components/Planner';
-import { Ingredient, UserProfile, ViewState, MealPlanDay, Recipe } from './types';
+import { Ingredient, UserProfile, ViewState, MealPlanDay, Recipe, ShoppingItem } from './types';
 
 // Initial Mock Data
 const INITIAL_INVENTORY: Ingredient[] = [
@@ -50,6 +50,16 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [savedRecipes, setSavedRecipes] = useState<Recipe[]>(() => {
+    const saved = localStorage.getItem('savedRecipes');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [shoppingList, setShoppingList] = useState<ShoppingItem[]>(() => {
+    const saved = localStorage.getItem('shoppingList');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   // Persistence
   useEffect(() => {
     localStorage.setItem('inventory', JSON.stringify(inventory));
@@ -67,11 +77,74 @@ const App: React.FC = () => {
     localStorage.setItem('recipes', JSON.stringify(recipes));
   }, [recipes]);
 
+  useEffect(() => {
+    localStorage.setItem('savedRecipes', JSON.stringify(savedRecipes));
+  }, [savedRecipes]);
+
+  useEffect(() => {
+    localStorage.setItem('shoppingList', JSON.stringify(shoppingList));
+  }, [shoppingList]);
+
+  // Notifications for expiring items
+  useEffect(() => {
+    const checkExpiryAndNotify = async () => {
+      if (!("Notification" in window)) return;
+      
+      let permission = Notification.permission;
+      if (permission === 'default') {
+        try {
+          permission = await Notification.requestPermission();
+        } catch (e) {
+          console.error("Failed to request notification permission", e);
+        }
+      }
+      
+      if (permission === 'granted') {
+        const today = new Date();
+        const expiringItems = inventory.filter(item => {
+          const expiry = new Date(item.expiryDate);
+          const diffTime = expiry.getTime() - today.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          return diffDays <= 3 && diffDays >= 0;
+        });
+
+        if (expiringItems.length > 0) {
+          const hasNotified = sessionStorage.getItem('notifiedExpiry');
+          // Only notify once per session to avoid spam
+          if (!hasNotified) {
+             new Notification('KitchenWiz Alert', {
+               body: `${expiringItems.length} items are expiring soon! Check your inventory to avoid waste.`,
+             });
+             sessionStorage.setItem('notifiedExpiry', 'true');
+          }
+        }
+      }
+    };
+    
+    checkExpiryAndNotify();
+  }, [inventory]);
+
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard': return <Dashboard inventory={inventory} />;
-      case 'inventory': return <Inventory items={inventory} setItems={setInventory} />;
-      case 'recipes': return <Recipes inventory={inventory} user={user} recipes={recipes} setRecipes={setRecipes} />;
+      case 'inventory': 
+        return (
+          <Inventory 
+            items={inventory} 
+            setItems={setInventory} 
+            shoppingList={shoppingList}
+            setShoppingList={setShoppingList}
+            mealPlan={mealPlan}
+          />
+        );
+      case 'recipes': return <Recipes 
+        inventory={inventory} 
+        user={user} 
+        recipes={recipes} 
+        setRecipes={setRecipes}
+        savedRecipes={savedRecipes}
+        setSavedRecipes={setSavedRecipes}
+      />;
       case 'planner': return <Planner mealPlan={mealPlan} setMealPlan={setMealPlan} user={user} inventory={inventory} availableRecipes={recipes} />;
       case 'assistant': return <Assistant inventory={inventory} />;
       case 'profile': return <Profile user={user} setUser={setUser} />;

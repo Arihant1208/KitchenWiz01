@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { Ingredient, Recipe, MealPlanDay, UserProfile } from "../types";
+import { Ingredient, Recipe, MealPlanDay, UserProfile, ShoppingItem } from "../types";
 
 const apiKey = process.env.API_KEY || ''; // In a real app, handle missing key gracefully
 const ai = new GoogleGenAI({ apiKey });
@@ -171,6 +171,59 @@ export const generateWeeklyMealPlan = async (user: UserProfile, inventory: Ingre
   }
 };
 
+export const generateShoppingList = async (inventory: Ingredient[], mealPlan: MealPlanDay[]): Promise<ShoppingItem[]> => {
+  const inventoryList = inventory.map(i => `${i.quantity} ${i.name}`).join(', ');
+  
+  // Extract all ingredients from meal plan
+  const planDetails = mealPlan.map(day => {
+    const meals = [day.breakfast, day.lunch, day.dinner].filter(m => m);
+    return `${day.day}: ${meals.map(m => `${m?.title} (${m?.ingredients?.map(i => i.name).join(', ') || 'ingredients unknown'})`).join('; ')}`;
+  }).join('\n');
+
+  const prompt = `
+    I have this inventory: ${inventoryList}.
+    
+    I have this meal plan for the week:
+    ${planDetails}
+    
+    Create a consolidated shopping list for items I am missing or likely don't have enough of to cook these meals.
+    Do not include basic staples like water, salt, pepper unless explicitly needed in large quantities.
+    Return a JSON array of objects with: name, quantity, category (produce, dairy, meat, pantry, frozen, other).
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: modelFlash,
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              name: { type: Type.STRING },
+              quantity: { type: Type.STRING },
+              category: { type: Type.STRING, enum: ['produce', 'dairy', 'meat', 'pantry', 'frozen', 'other'] }
+            },
+            required: ['name', 'category']
+          }
+        }
+      }
+    });
+
+    const list = JSON.parse(cleanJson(response.text || '[]'));
+    return list.map((item: any) => ({
+      ...item,
+      id: Math.random().toString(36).substring(7),
+      checked: false
+    }));
+  } catch (error) {
+    console.error("Shopping List Error:", error);
+    return [];
+  }
+};
+
 export const chatWithChef = async (history: {role: string, parts: {text: string}[]}[], message: string, inventory: Ingredient[]) => {
   const inventoryContext = inventory.map(i => i.name).join(', ');
   const systemInstruction = `You are an expert Chef and Nutritionist AI. The user has these ingredients in stock: ${inventoryContext}. 
@@ -183,7 +236,7 @@ export const chatWithChef = async (history: {role: string, parts: {text: string}
       history: history
     });
 
-    const result = await chat.sendMessage({ message });
+    const result = await chat.sendMessage({ message: message });
     return result.text;
   } catch (error) {
     console.error("Chat Error:", error);
